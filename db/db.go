@@ -13,7 +13,7 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
-var db *gorm.DB
+var migrated bool
 
 // Supported DB dialects.
 const (
@@ -21,10 +21,23 @@ const (
 	dialectMysql   = "mysql"
 )
 
+// OvalDB is a interface of Redhat, Debian
+type OvalDB interface {
+	GetByPackName(string, string) ([]models.Definition, error)
+	GetByCveID(string, string) ([]models.Definition, error)
+	InsertFetchMeta(models.FetchMeta) error
+	InsertOval(*models.Root, models.FetchMeta) error
+}
+
+// Base struct of RedHat, Debian
+type Base struct {
+	Family string
+	DB     *gorm.DB
+}
+
 // OpenDB opens Database
-func OpenDB() (err error) {
-	db, err = gorm.Open(c.Conf.DBType, c.Conf.DBPath)
-	if err != nil {
+func (o *Base) OpenDB() (err error) {
+	if o.DB, err = gorm.Open(c.Conf.DBType, c.Conf.DBPath); err != nil {
 		if c.Conf.DBType == dialectSqlite3 {
 			err = fmt.Errorf("Failed to open DB. datafile: %s, err: %s", c.Conf.DBPath, err)
 		} else if c.Conf.DBType == dialectMysql {
@@ -35,26 +48,34 @@ func OpenDB() (err error) {
 		return
 	}
 
-	db.LogMode(c.Conf.DebugSQL)
+	o.DB.LogMode(c.Conf.DebugSQL)
+	if !migrated {
+		if err := o.MigrateDB(); err != nil {
+			return err
+		}
+	}
+	migrated = true
 
 	if c.Conf.DBType == dialectSqlite3 {
-		db.Exec("PRAGMA journal_mode=WAL;")
+		if err := o.DB.Exec("PRAGMA journal_mode=WAL;").Error; err != nil {
+			return err
+		}
 	}
 
 	return
 }
 
-func recconectDB() error {
-	var err error
-	if err = db.Close(); err != nil {
+// Close close the db connection
+func (o *Base) Close() error {
+	if err := o.DB.Close(); err != nil {
 		return fmt.Errorf("Failed to close DB. Type: %s, Path: %s, err: %s", c.Conf.DBType, c.Conf.DBPath, err)
 	}
-	return OpenDB()
+	return nil
 }
 
 // MigrateDB migrates Database
-func MigrateDB() error {
-	if err := db.AutoMigrate(
+func (o *Base) MigrateDB() error {
+	if err := o.DB.AutoMigrate(
 		&models.FetchMeta{},
 		&models.Root{},
 		&models.Definition{},
@@ -70,68 +91,54 @@ func MigrateDB() error {
 	}
 
 	errMsg := "Failed to create index. err: %s"
-	if err := db.Model(&models.Definition{}).
+	if err := o.DB.Model(&models.Definition{}).
 		AddIndex("idx_definition_root_id", "root_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
 
-	if err := db.Model(&models.Package{}).
+	if err := o.DB.Model(&models.Package{}).
 		AddIndex("idx_packages_definition_id", "definition_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Package{}).
+	if err := o.DB.Model(&models.Package{}).
 		AddIndex("idx_packages_name", "name").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
 
-	if err := db.Model(&models.Reference{}).
+	if err := o.DB.Model(&models.Reference{}).
 		AddIndex("idx_reference_definition_id", "definition_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Advisory{}).
+	if err := o.DB.Model(&models.Advisory{}).
 		AddIndex("idx_advisories_definition_id", "definition_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Cve{}).
+	if err := o.DB.Model(&models.Cve{}).
 		AddIndex("idx_cves_advisory_id", "advisory_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Bugzilla{}).
+	if err := o.DB.Model(&models.Bugzilla{}).
 		AddIndex("idx_bugzillas_advisory_id", "advisory_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Cpe{}).
+	if err := o.DB.Model(&models.Cpe{}).
 		AddIndex("idx_cpes_advisory_id", "advisory_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Debian{}).
+	if err := o.DB.Model(&models.Debian{}).
 		AddIndex("idx_debian_definition_id", "definition_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
-	if err := db.Model(&models.Debian{}).
+	if err := o.DB.Model(&models.Debian{}).
 		AddIndex("idx_debian_cve_id", "cve_id").Error; err != nil {
 		return fmt.Errorf(errMsg, err)
 	}
 	return nil
 }
 
-// OvalDB is a interface of RedHat, Debian
-type OvalDB interface {
-	GetByPackName(string, string) ([]models.Definition, error)
-	GetByCveID(string, string) ([]models.Definition, error)
-	InsertFetchMeta(models.FetchMeta) error
-	InsertOval(*models.Root, models.FetchMeta) error
-}
-
-// Base struct of RedHat, Debian
-type Base struct {
-	Family string
-	DB     *gorm.DB
-}
-
 // InsertFetchMeta inserts FetchMeta
 func (o Base) InsertFetchMeta(meta models.FetchMeta) error {
-	tx := db.Begin()
+	tx := o.DB.Begin()
 
 	oldmeta := models.FetchMeta{}
 	r := tx.Where(&models.FetchMeta{FileName: meta.FileName}).First(&oldmeta)
@@ -159,16 +166,16 @@ func (o Base) InsertFetchMeta(meta models.FetchMeta) error {
 }
 
 // NewDB create a OvalDB client
-func NewDB(family string, priorityDB ...*gorm.DB) (OvalDB, error) {
+func NewDB(family string) (OvalDB, error) {
 	switch family {
 	case c.Debian:
-		return NewDebian(priorityDB...), nil
+		return NewDebian(), nil
 	case c.Ubuntu:
-		return NewUbuntu(priorityDB...), nil
+		return NewUbuntu(), nil
 	case c.RedHat:
-		return NewRedHat(priorityDB...), nil
+		return NewRedHat(), nil
 	case c.Oracle:
-		return NewOracle(priorityDB...), nil
+		return NewOracle(), nil
 	default:
 		if strings.Contains(family, "suse") {
 			suses := []string{
@@ -188,7 +195,7 @@ func NewDB(family string, priorityDB ...*gorm.DB) (OvalDB, error) {
 				return nil, fmt.Errorf("Unknown SUSE. Specify from %s: %s",
 					suses, family)
 			}
-			return NewSUSE(family, priorityDB...), nil
+			return NewSUSE(family), nil
 		}
 
 		return nil, fmt.Errorf("Unknown OS Type: %s", family)
@@ -196,8 +203,8 @@ func NewDB(family string, priorityDB ...*gorm.DB) (OvalDB, error) {
 }
 
 // GetByPackName select OVAL definition related to OS Family, osVer, packName
-func GetByPackName(family, osVer, packName string, priorityDB ...*gorm.DB) ([]models.Definition, error) {
-	db, err := NewDB(family, priorityDB...)
+func GetByPackName(family, osVer, packName string) ([]models.Definition, error) {
+	db, err := NewDB(family)
 	if err != nil {
 		return nil, err
 	}
@@ -205,8 +212,8 @@ func GetByPackName(family, osVer, packName string, priorityDB ...*gorm.DB) ([]mo
 }
 
 // GetByCveID select OVAL definition related to OS Family, osVer, cveID
-func GetByCveID(family, osVer, cveID string, priorityDB ...*gorm.DB) ([]models.Definition, error) {
-	db, err := NewDB(family, priorityDB...)
+func GetByCveID(family, osVer, cveID string) ([]models.Definition, error) {
+	db, err := NewDB(family)
 	if err != nil {
 		return nil, err
 	}

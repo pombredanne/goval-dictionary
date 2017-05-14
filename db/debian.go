@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 
-	"github.com/jinzhu/gorm"
 	"github.com/k0kubun/pp"
 	"github.com/kotakanbe/goval-dictionary/config"
 	"github.com/kotakanbe/goval-dictionary/log"
@@ -16,17 +15,13 @@ type Debian struct {
 }
 
 // NewDebian creates DBAccess
-func NewDebian(priority ...*gorm.DB) Debian {
+func NewDebian() Debian {
 	d := Debian{
 		Base{
 			Family: config.Debian,
 		},
 	}
-	if len(priority) == 1 {
-		d.DB = priority[0]
-	} else {
-		d.DB = db
-	}
+	d.OpenDB()
 	return d
 }
 

@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 
-	"github.com/jinzhu/gorm"
 	"github.com/k0kubun/pp"
 	"github.com/kotakanbe/goval-dictionary/models"
 	"github.com/labstack/gommon/log"
@@ -15,17 +14,13 @@ type SUSE struct {
 }
 
 // NewSUSE creates DBAccess
-func NewSUSE(suseType string, priority ...*gorm.DB) SUSE {
+func NewSUSE(suseType string) SUSE {
 	d := SUSE{
 		Base{
 			Family: suseType,
 		},
 	}
-	if len(priority) == 1 {
-		d.DB = priority[0]
-	} else {
-		d.DB = db
-	}
+	d.OpenDB()
 	return d
 }
 

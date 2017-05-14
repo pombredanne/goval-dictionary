@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/subcommands"
 	c "github.com/kotakanbe/goval-dictionary/config"
-	"github.com/kotakanbe/goval-dictionary/db"
 	log "github.com/kotakanbe/goval-dictionary/log"
 	server "github.com/kotakanbe/goval-dictionary/server"
 	"github.com/kotakanbe/goval-dictionary/util"
@@ -88,12 +87,6 @@ func (p *ServerCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}
 
 	if !c.Conf.Validate() {
 		return subcommands.ExitUsageError
-	}
-
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
 	}
 
 	log.Info("Starting HTTP Server...")

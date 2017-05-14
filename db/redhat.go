@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jinzhu/gorm"
 	"github.com/k0kubun/pp"
 	"github.com/kotakanbe/goval-dictionary/config"
 	"github.com/kotakanbe/goval-dictionary/log"
@@ -17,17 +16,13 @@ type RedHat struct {
 }
 
 // NewRedHat creates DBAccess
-func NewRedHat(priority ...*gorm.DB) RedHat {
+func NewRedHat() RedHat {
 	d := RedHat{
 		Base{
 			Family: config.RedHat,
 		},
 	}
-	if len(priority) == 1 {
-		d.DB = priority[0]
-	} else {
-		d.DB = db
-	}
+	d.OpenDB()
 	return d
 }
 

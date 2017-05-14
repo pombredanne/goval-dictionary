@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 
-	"github.com/jinzhu/gorm"
 	"github.com/k0kubun/pp"
 	"github.com/kotakanbe/goval-dictionary/config"
 	"github.com/kotakanbe/goval-dictionary/log"
@@ -16,17 +15,13 @@ type Ubuntu struct {
 }
 
 // NewUbuntu creates DBAccess
-func NewUbuntu(priority ...*gorm.DB) Ubuntu {
+func NewUbuntu() Ubuntu {
 	d := Ubuntu{
 		Base{
 			Family: config.Ubuntu,
 		},
 	}
-	if len(priority) == 1 {
-		d.DB = priority[0]
-	} else {
-		d.DB = db
-	}
+	d.OpenDB()
 	return d
 }
 

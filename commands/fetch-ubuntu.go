@@ -106,19 +106,8 @@ func (p *FetchUbuntuCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 		return subcommands.ExitFailure
 	}
 
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
-	}
-
-	log.Info("Migrating DB")
-	if err := db.MigrateDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
-	}
-
 	ubu := db.NewUbuntu()
+	defer ubu.Close()
 	for _, r := range results {
 		log.Infof("Fetched: %s", r.URL)
 		log.Infof("  %d OVAL definitions", len(r.Root.Definitions.Definitions))

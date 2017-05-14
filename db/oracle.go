@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 
-	"github.com/jinzhu/gorm"
 	"github.com/k0kubun/pp"
 	"github.com/kotakanbe/goval-dictionary/config"
 	"github.com/kotakanbe/goval-dictionary/log"
@@ -16,17 +15,13 @@ type Oracle struct {
 }
 
 // NewOracle creates DBAccess
-func NewOracle(priority ...*gorm.DB) Oracle {
+func NewOracle() Oracle {
 	d := Oracle{
 		Base{
 			Family: config.Oracle,
 		},
 	}
-	if len(priority) == 1 {
-		d.DB = priority[0]
-	} else {
-		d.DB = db
-	}
+	d.OpenDB()
 	return d
 }
 

@@ -95,18 +95,6 @@ func (p *FetchOracleCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 		return subcommands.ExitFailure
 	}
 
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
-	}
-
-	log.Info("Migrating DB")
-	if err := db.MigrateDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
-	}
-
 	for _, r := range results {
 		log.Infof("Fetched: %s", r.URL)
 		log.Infof("  %d OVAL definitions", len(r.Root.Definitions.Definitions))
@@ -126,6 +114,7 @@ func (p *FetchOracleCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 
 		roots := models.ConvertOracleToModel(r.Root)
 		deb := db.NewOracle()
+		defer deb.Close()
 		for _, root := range roots {
 			if err := deb.InsertOval(&root, fmeta); err != nil {
 				log.Error(err)

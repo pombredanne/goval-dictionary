@@ -87,11 +87,6 @@ func (p *SelectCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}
 		log.Fatal("Specify -by-package or -by-cveid")
 	}
 
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
-		log.Fatal(err)
-	}
-
 	if p.ByPackage {
 		dfs, err := db.GetByPackName(f.Args()[0], f.Args()[1], f.Args()[2])
 		if err != nil {
