@@ -7,13 +7,13 @@ import (
 
 const (
 	// RedHat is
-	RedHat = "RedHat"
+	RedHat = "redhat"
 
 	// Debian is
-	Debian = "Debian"
+	Debian = "debian"
 
 	// Ubuntu is
-	Ubuntu = "Ubuntu"
+	Ubuntu = "ubuntu"
 
 	// Ubuntu12 is Ubuntu Precise
 	Ubuntu12 = "precise"
@@ -40,8 +40,24 @@ const (
 	SUSEOpenstackCloud = "suse.openstack.cloud"
 
 	// Oracle is
-	Oracle = "Oracle"
+	Oracle = "oracle"
 )
+
+// AllSUSE is a list of SUSE families that is supported by OVAL
+var AllSUSE = []string{
+	OpenSUSE,
+	OpenSUSELeap,
+	SUSEEnterpriseServer,
+	SUSEEnterpriseDesktop,
+	SUSEOpenstackCloud,
+}
+
+// SupportedFamily is a list of Families that is supported by OVAL
+var SupportedFamily = append([]string{
+	RedHat,
+	Debian,
+	Ubuntu,
+	Oracle}, AllSUSE...)
 
 // Conf has Configuration
 var Conf Config

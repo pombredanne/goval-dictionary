@@ -167,38 +167,33 @@ func (o Base) InsertFetchMeta(meta models.FetchMeta) error {
 
 // NewDB create a OvalDB client
 func NewDB(family string) (OvalDB, error) {
-	switch family {
-	case c.Debian:
+	lowerfamily := strings.ToLower(family)
+	switch lowerfamily {
+	case strings.ToLower(c.Debian):
 		return NewDebian(), nil
-	case c.Ubuntu:
+	case strings.ToLower(c.Ubuntu):
 		return NewUbuntu(), nil
-	case c.RedHat:
+	case strings.ToLower(c.RedHat):
 		return NewRedHat(), nil
-	case c.Oracle:
+	case strings.ToLower(c.Oracle):
 		return NewOracle(), nil
 	default:
-		if strings.Contains(family, "suse") {
-			suses := []string{
-				c.OpenSUSE,
-				c.OpenSUSELeap,
-				c.SUSEEnterpriseServer,
-				c.SUSEEnterpriseDesktop,
-				c.SUSEOpenstackCloud,
-			}
+		if strings.Contains(lowerfamily, "suse") {
 			found := false
-			for _, name := range suses {
-				if name == family {
+			for _, name := range c.AllSUSE {
+				if name == lowerfamily {
 					found = true
 				}
 			}
 			if !found {
 				return nil, fmt.Errorf("Unknown SUSE. Specify from %s: %s",
-					suses, family)
+					c.AllSUSE, lowerfamily)
 			}
-			return NewSUSE(family), nil
+			return NewSUSE(lowerfamily), nil
 		}
 
-		return nil, fmt.Errorf("Unknown OS Type: %s", family)
+		return nil, fmt.Errorf("Unknown OS Type: %s. Specify from %s",
+			family, c.SupportedFamily)
 	}
 }
 
