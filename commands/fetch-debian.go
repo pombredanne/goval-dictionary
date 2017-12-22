@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/xml"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,11 +21,10 @@ import (
 
 // FetchDebianCmd is Subcommand for fetch RedHat OVAL
 type FetchDebianCmd struct {
-	last2Y    bool
-	years     bool
-	ovalFiles bool
+	// ovalFiles bool
 	Debug     bool
 	DebugSQL  bool
+	Quiet     bool
 	LogDir    string
 	DBPath    string
 	DBType    string
@@ -44,27 +41,25 @@ func (*FetchDebianCmd) Synopsis() string { return "Fetch Vulnerability dictionar
 func (*FetchDebianCmd) Usage() string {
 	return `fetch-debian:
 	fetch-debian
-		[-last2y]
-		[-years] 2015 2016 ...
-		[-dbtype=mysql|sqlite3]
-		[-dbpath=$PWD/cve.sqlite3 or connection string]
+		[-dbtype=sqlite3|mysql|postgres|redis]
+		[-dbpath=$PWD/oval.sqlite3 or connection string]
 		[-http-proxy=http://192.168.0.1:8080]
 		[-debug]
 		[-debug-sql]
+		[-quiet]
 		[-log-dir=/path/to/log]
-		[-oval-files]
 
-For the first time, run the blow command to fetch data for all versions.
-   $ for i in {1999..2017}; do goval-dictionary fetch-debian $i; done
+For details, see https://github.com/kotakanbe/goval-dictionary#usage-fetch-oval-data-from-debian
+	$ goval-dictionary fetch-debian 7 8 9 10
+
 `
 }
 
 // SetFlags set flag
 func (p *FetchDebianCmd) SetFlags(f *flag.FlagSet) {
-	f.BoolVar(&p.Debug, "debug", false,
-		"debug mode")
-	f.BoolVar(&p.DebugSQL, "debug-sql", false,
-		"SQL debug mode")
+	f.BoolVar(&p.Debug, "debug", false, "debug mode")
+	f.BoolVar(&p.DebugSQL, "debug-sql", false, "SQL debug mode")
+	f.BoolVar(&p.Quiet, "quiet", false, "quiet mode (no output)")
 
 	defaultLogDir := util.GetDefaultLogDir()
 	f.StringVar(&p.LogDir, "log-dir", defaultLogDir, "/path/to/log")
@@ -74,16 +69,7 @@ func (p *FetchDebianCmd) SetFlags(f *flag.FlagSet) {
 		"/path/to/sqlite3 or SQL connection string")
 
 	f.StringVar(&p.DBType, "dbtype", "sqlite3",
-		"Database type to store data in (sqlite3 or mysql supported)")
-
-	f.BoolVar(&p.last2Y, "last2y", false,
-		"Refresh oval data in the last two years.")
-
-	f.BoolVar(&p.years, "years", false,
-		"Refresh oval data of specific years.")
-
-	f.BoolVar(&p.ovalFiles, "oval-files", false,
-		"Refresh oval data from local files.")
+		"Database type to store data in (sqlite3, mysql, postgres or redis supported)")
 
 	f.StringVar(
 		&p.HTTPProxy,
@@ -95,7 +81,12 @@ func (p *FetchDebianCmd) SetFlags(f *flag.FlagSet) {
 
 // Execute execute
 func (p *FetchDebianCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	log.Initialize(p.LogDir)
+	c.Conf.Quiet = p.Quiet
+	if c.Conf.Quiet {
+		log.Initialize(p.LogDir, ioutil.Discard)
+	} else {
+		log.Initialize(p.LogDir, os.Stderr)
+	}
 
 	c.Conf.DebugSQL = p.DebugSQL
 	c.Conf.Debug = p.Debug
@@ -111,43 +102,58 @@ func (p *FetchDebianCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 		return subcommands.ExitUsageError
 	}
 
-	results := []fetcher.FetchResult{}
-	switch {
-	case p.last2Y || p.years:
-		var err error
-		if results, err = p.fetchFromInternet(f); err != nil {
-			log.Error(err)
-			return subcommands.ExitFailure
-		}
-	case p.ovalFiles:
-		var err error
-		if results, err = p.fetchFromFiles(f); err != nil {
-			log.Error(err)
-			return subcommands.ExitFailure
-		}
+	if len(f.Args()) == 0 {
+		log.Errorf("Specify versions to fetch")
+		return subcommands.ExitUsageError
 	}
 
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
+	// Distinct
+	vers := []string{}
+	v := map[string]bool{}
+	for _, arg := range f.Args() {
+		v[arg] = true
+	}
+	for k := range v {
+		vers = append(vers, k)
+	}
+
+	results, err := fetcher.FetchDebianFiles(vers)
+	if err != nil {
 		log.Error(err)
 		return subcommands.ExitFailure
 	}
 
-	log.Info("Migrating DB")
-	if err := db.MigrateDB(); err != nil {
+	var driver db.DB
+	if driver, err = db.NewDB(c.Debian, c.Conf.DBType, c.Conf.DBPath, c.Conf.DebugSQL); err != nil {
 		log.Error(err)
 		return subcommands.ExitFailure
 	}
+	defer driver.CloseDB()
 
 	for _, r := range results {
+		ovalroot := oval.Root{}
+		if err = xml.Unmarshal(r.Body, &ovalroot); err != nil {
+			log.Errorf("Failed to unmarshal. url: %s, err: %s", r.URL, err)
+			return subcommands.ExitUsageError
+		}
 		log.Infof("Fetched: %s", r.URL)
-		log.Infof("  %d OVAL definitions", len(r.Root.Definitions.Definitions))
+		log.Infof("  %d OVAL definitions", len(ovalroot.Definitions.Definitions))
 
-		//  var timeformat = "2006-01-02T15:04:05.999-07:00"
+		defs := models.ConvertDebianToModel(&ovalroot)
+
 		var timeformat = "2006-01-02T15:04:05"
-		t, err := time.Parse(timeformat, strings.Split(r.Root.Generator.Timestamp, ".")[0])
+		var t time.Time
+		t, err = time.Parse(timeformat, strings.Split(ovalroot.Generator.Timestamp, ".")[0])
 		if err != nil {
-			panic(err)
+			log.Errorf("Failed to parse timestamp. url: %s, err: %s", r.URL, err)
+			return subcommands.ExitUsageError
+		}
+
+		root := models.Root{
+			Family:      c.Debian,
+			OSVersion:   r.Target,
+			Definitions: defs,
+			Timestamp:   time.Now(),
 		}
 
 		ss := strings.Split(r.URL, "/")
@@ -156,79 +162,15 @@ func (p *FetchDebianCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interf
 			FileName:  ss[len(ss)-1],
 		}
 
-		roots := models.ConvertDebianToModel(r.Root)
-		deb := db.NewDebian()
-		for _, root := range roots {
-			if err := deb.InsertOval(&root, fmeta); err != nil {
-				log.Error(err)
-				return subcommands.ExitFailure
-			}
+		if err := driver.InsertOval(&root, fmeta); err != nil {
+			log.Error(err)
+			return subcommands.ExitFailure
 		}
-		if err := deb.InsertFetchMeta(fmeta); err != nil {
+		if err := driver.InsertFetchMeta(fmeta); err != nil {
 			log.Error(err)
 			return subcommands.ExitFailure
 		}
 	}
 
 	return subcommands.ExitSuccess
-}
-
-func (p *FetchDebianCmd) fetchFromInternet(f *flag.FlagSet) ([]fetcher.FetchResult, error) {
-	years := []int{}
-	thisYear := time.Now().Year()
-	switch {
-	case p.last2Y:
-		for i := 0; i < 2; i++ {
-			years = append(years, thisYear-i)
-		}
-	case p.years:
-		if len(f.Args()) == 0 {
-			return nil,
-				fmt.Errorf("Specify years to fetch (from 1999 to %d)", thisYear)
-		}
-		for _, arg := range f.Args() {
-			year, err := strconv.Atoi(arg)
-			if err != nil || year < 1999 || time.Now().Year() < year {
-				return nil,
-					fmt.Errorf("Specify years to fetch (from 1999 to %d), arg: %s",
-						thisYear, arg)
-			}
-			found := false
-			for _, y := range years {
-				if y == year {
-					found = true
-					break
-				}
-			}
-			if !found {
-				years = append(years, year)
-			}
-		}
-	default:
-		return nil, fmt.Errorf("specify -last2y or -years")
-	}
-
-	return fetcher.FetchDebianFiles(years)
-}
-
-func (p *FetchDebianCmd) fetchFromFiles(f *flag.FlagSet) (res []fetcher.FetchResult, err error) {
-	if len(f.Args()) == 0 {
-		return nil,
-			fmt.Errorf("Specify OVAL file paths to read")
-	}
-	for _, arg := range f.Args() {
-		data, err := ioutil.ReadFile(arg)
-		if err != nil {
-			return nil, err
-		}
-		var root oval.Root
-		if err := xml.Unmarshal([]byte(data), &root); err != nil {
-			return nil, err
-		}
-		res = append(res, fetcher.FetchResult{
-			URL:  arg,
-			Root: &root,
-		})
-	}
-	return
 }

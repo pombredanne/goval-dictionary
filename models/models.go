@@ -19,6 +19,7 @@ type Root struct {
 	Family      string
 	OSVersion   string
 	Definitions []Definition
+	Timestamp   time.Time
 }
 
 // Definition : >definitions>definition
@@ -26,6 +27,7 @@ type Definition struct {
 	ID     uint `gorm:"primary_key"`
 	RootID uint `json:"-" xml:"-"`
 
+	DefinitionID  string
 	Title         string
 	Description   string
 	Advisory      Advisory
@@ -77,6 +79,7 @@ type Cve struct {
 	Cvss2  string
 	Cvss3  string
 	Cwe    string
+	Impact string
 	Href   string
 	Public string
 }

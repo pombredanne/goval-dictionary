@@ -2,7 +2,9 @@ package commands
 
 import (
 	"context"
+	"encoding/xml"
 	"flag"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/kotakanbe/goval-dictionary/log"
 	"github.com/kotakanbe/goval-dictionary/models"
 	"github.com/kotakanbe/goval-dictionary/util"
+	"github.com/ymomoi/goval-parser/oval"
 )
 
 // FetchSUSECmd is Subcommand for fetch SUSE OVAL
@@ -25,10 +28,12 @@ type FetchSUSECmd struct {
 	SUSEOpenstackCloud    bool
 	Debug                 bool
 	DebugSQL              bool
+	Quiet                 bool
 	LogDir                string
 	DBPath                string
 	DBType                string
 	HTTPProxy             string
+	OVALPath              string
 }
 
 // Name return subcommand name
@@ -46,14 +51,16 @@ func (*FetchSUSECmd) Usage() string {
 		[-suse-enterprise-server]
 		[-suse-enterprise-desktop]
 		[-suse-openstack-cloud]
-		[-dbtype=mysql|sqlite3]
-		[-dbpath=$PWD/cve.sqlite3 or connection string]
+		[-dbtype=sqlite3|mysql|postgres|redis]
+		[-dbpath=$PWD/oval.sqlite3 or connection string]
 		[-http-proxy=http://192.168.0.1:8080]
 		[-debug]
 		[-debug-sql]
+		[-quiet]
 		[-log-dir=/path/to/log]
 
-	example: goval-dictionary fetch-suse -opensuse 13.2
+For details, see https://github.com/kotakanbe/goval-dictionary#usage-fetch-oval-data-from-suse
+	$ goval-dictionary fetch-suse -opensuse 13.2
 
 `
 }
@@ -65,10 +72,11 @@ func (p *FetchSUSECmd) SetFlags(f *flag.FlagSet) {
 	f.BoolVar(&p.OpenSUSELeap, "opensuse-leap", false, "OpenSUSE Leap")
 	f.BoolVar(&p.SUSEEnterpriseServer, "suse-enterprise-server", false, "SUSE Enterprise Server")
 	f.BoolVar(&p.SUSEEnterpriseDesktop, "suse-enterprise-desktop", false, "SUSE Enterprise Desktop")
-	f.BoolVar(&p.SUSEEnterpriseDesktop, "suse-openstack-cloud", false, "SUSE Openstack cloud")
+	f.BoolVar(&p.SUSEOpenstackCloud, "suse-openstack-cloud", false, "SUSE Openstack cloud")
 
 	f.BoolVar(&p.Debug, "debug", false, "debug mode")
 	f.BoolVar(&p.DebugSQL, "debug-sql", false, "SQL debug mode")
+	f.BoolVar(&p.Quiet, "quiet", false, "quiet mode (no output)")
 
 	defaultLogDir := util.GetDefaultLogDir()
 	f.StringVar(&p.LogDir, "log-dir", defaultLogDir, "/path/to/log")
@@ -78,19 +86,21 @@ func (p *FetchSUSECmd) SetFlags(f *flag.FlagSet) {
 		"/path/to/sqlite3 or SQL connection string")
 
 	f.StringVar(&p.DBType, "dbtype", "sqlite3",
-		"Database type to store data in (sqlite3 or mysql supported)")
+		"Database type to store data in (sqlite3, mysql, postgres or redis supported)")
 
-	f.StringVar(
-		&p.HTTPProxy,
-		"http-proxy",
-		"",
-		"http://proxy-url:port (default: empty)",
-	)
+	f.StringVar(&p.HTTPProxy, "http-proxy", "", "http://proxy-url:port (default: empty)")
+
+	f.StringVar(&p.OVALPath, "oval-path", "", "Local file path of Downloaded oval")
 }
 
 // Execute execute
 func (p *FetchSUSECmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	log.Initialize(p.LogDir)
+	c.Conf.Quiet = p.Quiet
+	if c.Conf.Quiet {
+		log.Initialize(p.LogDir, ioutil.Discard)
+	} else {
+		log.Initialize(p.LogDir, os.Stderr)
+	}
 
 	c.Conf.DebugSQL = p.DebugSQL
 	c.Conf.Debug = p.Debug
@@ -106,13 +116,19 @@ func (p *FetchSUSECmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interfac
 		return subcommands.ExitUsageError
 	}
 
-	vers := []string{}
 	if len(f.Args()) == 0 {
-		log.Errorf("Specify versions to fetch. Oval are here: http://ftp.suse.com/pub/projects/security/oval/")
+		log.Errorf("Specify versions to fetch. Oval files are here: http://ftp.suse.com/pub/projects/security/oval/")
 		return subcommands.ExitUsageError
 	}
+
+	// Distinct
+	v := map[string]bool{}
+	vers := []string{}
 	for _, arg := range f.Args() {
-		vers = append(vers, arg)
+		v[arg] = true
+	}
+	for k := range v {
+		vers = append(vers, k)
 	}
 
 	suseType := ""
@@ -129,55 +145,64 @@ func (p *FetchSUSECmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interfac
 		suseType = c.SUSEOpenstackCloud
 	}
 
-	results, err := fetcher.FetchSUSEFiles(suseType, vers)
-	if err != nil {
+	var results []fetcher.FetchResult
+	var err error
+	if p.OVALPath == "" {
+		results, err = fetcher.FetchSUSEFiles(suseType, vers)
+		if err != nil {
+			log.Error(err)
+			return subcommands.ExitFailure
+		}
+	} else {
+		dat, err := ioutil.ReadFile(p.OVALPath)
+		if err != nil {
+			log.Error(err)
+			return subcommands.ExitFailure
+		}
+		results = []fetcher.FetchResult{{
+			Body:   dat,
+			Target: vers[0],
+		}}
+	}
+
+	var driver db.DB
+	if driver, err = db.NewDB(suseType, c.Conf.DBType, c.Conf.DBPath, c.Conf.DebugSQL); err != nil {
 		log.Error(err)
 		return subcommands.ExitFailure
 	}
+	defer driver.CloseDB()
 
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
-	}
-
-	log.Info("Migrating DB")
-	if err := db.MigrateDB(); err != nil {
-		log.Error(err)
-		return subcommands.ExitFailure
-	}
-
-	suse := db.NewSUSE(suseType)
 	for _, r := range results {
+		ovalroot := oval.Root{}
+		if err = xml.Unmarshal(r.Body, &ovalroot); err != nil {
+			log.Errorf("Failed to unmarshal. url: %s, err: %s", r.URL, err)
+			return subcommands.ExitUsageError
+		}
 		log.Infof("Fetched: %s", r.URL)
-		log.Infof("  %d OVAL definitions", len(r.Root.Definitions.Definitions))
-
-		defs := models.ConvertSUSEToModel(r.Root)
+		log.Infof("  %d OVAL definitions", len(ovalroot.Definitions.Definitions))
 
 		var timeformat = "2006-01-02T15:04:05"
-		t, err := time.Parse(timeformat, r.Root.Generator.Timestamp)
+		t, err := time.Parse(timeformat, ovalroot.Generator.Timestamp)
 		if err != nil {
-			panic(err)
+			log.Error(err)
+			return subcommands.ExitFailure
 		}
-
-		root := models.Root{
-			Family:      suseType,
-			OSVersion:   r.Target,
-			Definitions: defs,
-		}
-
 		ss := strings.Split(r.URL, "/")
 		fmeta := models.FetchMeta{
 			Timestamp: t,
 			FileName:  ss[len(ss)-1],
 		}
 
-		if err := suse.InsertOval(&root, fmeta); err != nil {
-			log.Error(err)
-			return subcommands.ExitFailure
+		roots := models.ConvertSUSEToModel(&ovalroot, suseType)
+		for _, root := range roots {
+			root.Timestamp = time.Now()
+			if err := driver.InsertOval(&root, fmeta); err != nil {
+				log.Error(err)
+				return subcommands.ExitFailure
+			}
 		}
 
-		if err := suse.InsertFetchMeta(fmeta); err != nil {
+		if err := driver.InsertFetchMeta(fmeta); err != nil {
 			log.Error(err)
 			return subcommands.ExitFailure
 		}

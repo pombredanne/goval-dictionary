@@ -1,20 +1,24 @@
 
-[[dependencies]]
+[[constraint]]
   branch = "master"
-  name = "github.com/Sirupsen/logrus"
+  name = "github.com/sirupsen/logrus"
 
-[[dependencies]]
-  branch = "master"
-  name = "github.com/future-architect/vuls"
-
-[[dependencies]]
+[[constraint]]
   branch = "master"
   name = "github.com/k0kubun/pp"
 
-[[dependencies]]
+[[constraint]]
   branch = "master"
   name = "github.com/kotakanbe/logrus-prefixed-formatter"
 
-[[dependencies]]
+[[constraint]]
   branch = "master"
   name = "github.com/ymomoi/goval-parser"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/cheggaaa/pb"
+
+[[constraint]]
+  branch = "v2"
+  name = "gopkg.in/yaml.v2"

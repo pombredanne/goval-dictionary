@@ -2,37 +2,43 @@
 
 This is tool to build a local copy of the OVAL. The local copy is generated in sqlite format, and the tool has a server mode for easy querying.
 
-## Install Requirements
+## Installation
+
+### Requirements
 
 goval-dictionary requires the following packages.
 
-- SQLite3 or MySQL
+- SQLite3, MySQL, PostgreSQL or Redis
 - git
 - gcc
 - go v1.8 or later
     - https://golang.org/doc/install
 
-----
-# Install 
+### Install
 
 ```bash
 $ mkdir -p $GOPATH/src/github.com/kotakanbe
 $ cd $GOPATH/src/github.com/kotakanbe
-$ git https://github.com/kotakanbe/goval-dictionary.git
+$ git clone https://github.com/kotakanbe/goval-dictionary.git
 $ cd goval-dictionary
 $ make install
 ```
 
-# Usage
+----
 
-```
-goval-dictionary -h
+## Usage
+
+```bash
+$ goval-dictionary -h
 Usage: goval-dictionary <flags> <subcommand> <subcommand args>
 
 Subcommands:
         commands         list all command names
         flags            describe all known top-level flags
         help             describe subcommands and their syntax
+
+Subcommands for fetch-alpine:
+        fetch-alpine     Fetch Vulnerability dictionary from Alpine secdb
 
 Subcommands for fetch-debian:
         fetch-debian     Fetch Vulnerability dictionary from Debian
@@ -59,134 +65,137 @@ Subcommands for server:
 Use "goval-dictionary flags" for a list of top-level flags
 ```
 
-## Usage: Fetch OVAL data from RedHat.  
+### Usage: Fetch OVAL data from RedHat
 
 - [Redhat OVAL](https://www.redhat.com/security/data/oval/)
 
-```
-./goval-dictionary fetch-redhat -h
+```bash
+$ goval-dictionary fetch-redhat -h
 fetch-redhat:
         fetch-redhat
-                [-dbtype=mysql|sqlite3]
-                [-dbpath=$PWD/cve.sqlite3 or connection string]
+                [-dbtype=sqlite3|mysql|postgres|redis]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
                 [-http-proxy=http://192.168.0.1:8080]
                 [-debug]
                 [-debug-sql]
+                [-quiet]
                 [-log-dir=/path/to/log]
 
 For the first time, run the blow command to fetch data for all versions.
-   $ for i in {5..7}; do goval-dictionary fetch-redhat $i; done
+    $ goval-dictionary fetch-redhat 5 6 7
+        or
+    $ for i in {5..7}; do goval-dictionary fetch-redhat $i; done
+
   -dbpath string
-        /path/to/sqlite3 or SQL connection string (default "/Users/kotakanbe/go/src/github.com/kotakanbe/goval-dictionary/oval.sqlite3")
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
   -dbtype string
-        Database type to store data in (sqlite3 or mysql supported) (default "sqlite3")
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
   -debug
         debug mode
   -debug-sql
         SQL debug mode
   -http-proxy string
         http://proxy-url:port (default: empty)
+  -quiet
+        quiet mode (no output)
   -log-dir string
         /path/to/log (default "/var/log/vuls")
 ```
 
+- Import OVAL data from Internet
+
 ```bash
-$ for i in {5..7}; do goval-dictionary fetch-redhat $i; done
+$ goval-dictionary fetch-redhat 5 6 7
 ```
 
-## Usage: Fetch OVAL data from Debian.  
+### Usage: Fetch OVAL data from Debian
 
 - [Debian OVAL](https://www.debian.org/security/oval/)
 
-```
-./goval-dictionary fetch-debian -h
+```bash
+$ goval-dictionary fetch-debian -h
 fetch-debian:
         fetch-debian
-                [-last2y]
-                [-years] 2015 2016 ...
-                [-dbtype=mysql|sqlite3]
-                [-dbpath=$PWD/cve.sqlite3 or connection string]
+                [-dbtype=sqlite3|mysql|postgres|redis]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
                 [-http-proxy=http://192.168.0.1:8080]
                 [-debug]
                 [-debug-sql]
+                [-quiet]
                 [-log-dir=/path/to/log]
-                [-oval-files]
 
 For the first time, run the blow command to fetch data for all versions.
-   $ for i in {1999..2017}; do goval-dictionary fetch-debian $i; done
+    $ goval-dictionary fetch-debian 7 8 9 10
+
   -dbpath string
-        /path/to/sqlite3 or SQL connection string (default "/Users/kotakanbe/go/src/github.com/kotakanbe/goval-dictionary/oval.sqlite3")
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
   -dbtype string
-        Database type to store data in (sqlite3 or mysql supported) (default "sqlite3")
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
   -debug
         debug mode
   -debug-sql
         SQL debug mode
   -http-proxy string
         http://proxy-url:port (default: empty)
-  -last2y
-        Refresh oval data in the last two years.
+  -quiet
+        quiet mode (no output)
   -log-dir string
         /path/to/log (default "/var/log/vuls")
-  -oval-files
-        Refresh oval data from local files.
-  -years
-        Refresh oval data of specific years.
 ```
 
-- Import oval data from Internet
+- Import OVAL data from Internet
+
 ```bash
-$ for i in `seq 1999 $(date +"%Y")`; do goval-dictionary fetch-debian -years $i; done
+$ goval-dictionary fetch-debian 7 8 9 10
 ```
 
-- Import oval data from local file
-```bash
-./goval-dictionary fetch-debian -oval-files -debug $HOME/oval/oval-definitions-2015.xml
-```
-
-## Usage: Fetch OVAL data from Ubuntu.  
+### Usage: Fetch OVAL data from Ubuntu
 
 - [Ubuntu](https://people.canonical.com/~ubuntu-security/oval/)
 
-```
+```bash
+$ goval-dictionary fetch-ubuntu -h
 fetch-ubuntu:
         fetch-ubuntu
-                [-dbtype=mysql|sqlite3]
-                [-dbpath=$PWD/cve.sqlite3 or connection string]
+                [-dbtype=sqlite3|mysql|postgres|redis]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
                 [-http-proxy=http://192.168.0.1:8080]
                 [-debug]
                 [-debug-sql]
+                [-quiet]
                 [-log-dir=/path/to/log]
 
 For the first time, run the blow command to fetch data for all versions.
-   $ goval-dictionary fetch-ubuntu 12 14 16
-
+    $ goval-dictionary fetch-ubuntu 12 14 16
 
   -dbpath string
-        /path/to/sqlite3 or SQL connection string (default "/Users/kotakanbe/go/src/github.com/kotakanbe/goval-dictionary/oval.sqlite3")
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
   -dbtype string
-        Database type to store data in (sqlite3 or mysql supported) (default "sqlite3")
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
   -debug
         debug mode
   -debug-sql
         SQL debug mode
   -http-proxy string
         http://proxy-url:port (default: empty)
+  -quiet
+        quiet mode (no output)
   -log-dir string
         /path/to/log (default "/var/log/vuls")
 ```
 
-- Import oval data from Internet
+- Import OVAL data from Internet
 
 ```bash
 $ goval-dictionary fetch-ubuntu 12 14 16
 ```
 
-## Usage: Fetch OVAL data from SUSE.  
+### Usage: Fetch OVAL data from SUSE
 
 - [SUSE](http://ftp.suse.com/pub/projects/security/oval/)
 
-```
+```bash
+$ goval-dictionary fetch-suse -h
 fetch-suse:
         fetch-suse
                 [-opensuse]
@@ -194,66 +203,115 @@ fetch-suse:
                 [-suse-enterprise-server]
                 [-suse-enterprise-desktop]
                 [-suse-openstack-cloud]
-                [-dbtype=mysql|sqlite3]
-                [-dbpath=$PWD/cve.sqlite3 or connection string]
+                [-dbtype=sqlite3|mysql|postgres|redis]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
                 [-http-proxy=http://192.168.0.1:8080]
                 [-debug]
                 [-debug-sql]
+                [-quiet]
                 [-log-dir=/path/to/log]
 
-        example: goval-dictionary fetch-suse -opensuse 13.2
+For the first time, run the blow command to fetch data for all versions.
+    $ goval-dictionary fetch-suse -opensuse 13.2
 
   -dbpath string
-        /path/to/sqlite3 or SQL connection string (default "/Users/kotakanbe/go/src/github.com/kotakanbe/goval-dictionary/oval.sqlite3")
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
   -dbtype string
-        Database type to store data in (sqlite3 or mysql supported) (default "sqlite3")
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
   -debug
         debug mode
   -debug-sql
         SQL debug mode
   -http-proxy string
         http://proxy-url:port (default: empty)
+  -quiet
+        quiet mode (no output)
   -log-dir string
         /path/to/log (default "/var/log/vuls")
   -opensuse
         OpenSUSE
   -opensuse-leap
         OpenSUSE Leap
-  -suse-enterprise-desktop
-        SUSE Enterprise Desktop
   -suse-enterprise-server
         SUSE Enterprise Server
-  -suse-openstack-cloud
-        SUSE Openstack cloud
 ```
 
-- Import oval data from Internet
+- Import OVAL data from Internet
 
 ```bash
 $ goval-dictionary fetch-suse -opensuse 13.2
 ```
 
-## Usage: Fetch OVAL data from Oracle.  
+```bash
+$ goval-dictionary fetch-suse -suse-enterprise-server 12
+
+```
+
+### Usage: Fetch OVAL data from Oracle
 
 - [Oracle Linux](https://linux.oracle.com/security/oval/)
 
-```
+```bash
 $ goval-dictionary fetch-oracle -h
 fetch-oracle:
         fetch-oracle
-                [-dbtype=mysql|sqlite3]
-                [-dbpath=$PWD/cve.sqlite3 or connection string]
+                [-dbtype=sqlite3|mysql|postgres|redis]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
                 [-http-proxy=http://192.168.0.1:8080]
                 [-debug]
                 [-debug-sql]
+                [-quiet]
                 [-log-dir=/path/to/log]
 
-        example: goval-dictionary fetch-oracle
+For the first time, run the blow command to fetch data for all versions.
+    $ goval-dictionary fetch-oracle
 
   -dbpath string
-        /path/to/sqlite3 or SQL connection string (default "/Users/kotakanbe/go/src/github.com/kotakanbe/goval-dictionary/oval.sqlite3")
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
   -dbtype string
-        Database type to store data in (sqlite3 or mysql supported) (default "sqlite3")
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
+  -debug
+        debug mode
+  -debug-sql
+        SQL debug mode
+  -http-proxy string
+        http://proxy-url:port (default: empty)
+  -quiet
+        quiet mode (no output)
+  -log-dir string
+        /path/to/log (default "/var/log/vuls")
+```
+
+- Import OVAL data from Internet
+
+```bash
+ $ goval-dictionary fetch-oracle
+```
+
+### Usage: Fetch alpine-secdb as OVAL data type
+
+- [Alpine Linux](https://git.alpinelinux.org/cgit/alpine-secdb/)
+alpine-secdb is provided in YAML format and not OVAL, but it is supported by goval-dictionary to make alpine-secdb easier to handle from Vuls.
+See [here](https://git.alpinelinux.org/cgit/alpine-secdb/tree/) for a list of supported alpines.
+
+```bash
+fetch-alpine:
+        fetch-alpine
+                [-dbtype=sqlite3|mysql|postgres|redis]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
+                [-http-proxy=http://192.168.0.1:8080]
+                [-debug]
+                [-debug-sql]
+                [-quiet]
+                [-log-dir=/path/to/log]
+
+The version list is here https://git.alpinelinux.org/cgit/alpine-secdb/tree/
+        $ goval-dictionary fetch-alpine 3.3 3.4 3.5 3.6
+
+  -dbpath string
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
+  -dbtype string
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
   -debug
         debug mode
   -debug-sql
@@ -262,24 +320,28 @@ fetch-oracle:
         http://proxy-url:port (default: empty)
   -log-dir string
         /path/to/log (default "/var/log/vuls")
+  -quiet
+        quiet mode (no output)
 ```
 
-- Import oval data from Internet
+- Import alpine-secdb from Internet
 
 ```bash
-$ goval-dictionary fetch-oracle
+ $ goval-dictionary fetch-alpine 3.3 3.4 3.5 3.6
 ```
+See [here](https://git.alpinelinux.org/cgit/alpine-secdb/tree/) for a list of supported alpines.
 
-## Usage: select oval by package name 
+### Usage: select oval by package name
 
 Select from DB where package name is golang.
- 
- <details>
+
+<details>
 <summary> 
 `$ goval-dictionary select -by-package RedHat 7 golang`
 </summary>
- 
-```
+
+```bash
+$ goval-dictionary select -by-package RedHat 7 golang
 [Apr 10 10:22:43]  INFO Opening DB (sqlite3).
 CVE-2015-5739
     {3399 319 golang 0:1.6.3-1.el7_2.1}
@@ -492,14 +554,14 @@ CVE-2016-5386
 
 </details>
 
-## Usage: select oval by CVE-ID
+### Usage: select oval by CVE-ID
 
 <details>
 <summary>
 `Select from DB where CVE-ID CVE-2017-6009`
 </summary>
 
-```
+```bash
 $ goval-dictionary select -by-cveid RedHat 7 CVE-2017-6009
 [Apr 12 12:12:36]  INFO Opening DB (sqlite3).
 RHSA-2017:0837: icoutils security update (Important)
@@ -691,67 +753,70 @@ Important
     },
   },
 }
+
 ```
+
 </details>
 
-## Usage: Start goval-dictionary as server mode.  
+### Usage: Start goval-dictionary as server mode
 
-```
-./goval-dictionary server -h
+```bash
+$ goval-dictionary server -h
 server:
         server
                 [-bind=127.0.0.1]
                 [-port=8000]
-                [-dbpath=$PWD/cve.sqlite3 or connection string]
-                [-dbtype=mysql|sqlite3]
+                [-dbpath=$PWD/oval.sqlite3 or connection string]
+                [-dbtype=sqlite3|mysql|postgres|redis]
                 [-debug]
                 [-debug-sql]
+                [-quiet]
                 [-log-dir=/path/to/log]
 
   -bind string
         HTTP server bind to IP address (default: loop back interface) (default "127.0.0.1")
   -dbpath string
-        /path/to/sqlite3 or SQL connection string (default "/Users/kotakanbe/go/src/github.com/kotakanbe/goval-dictionary/oval.sqlite3")
+        /path/to/sqlite3 or SQL connection string (default "$PWD/oval.sqlite3")
   -dbtype string
-        Database type to store data in (sqlite3 or mysql supported) (default "sqlite3")
+        Database type to store data in (sqlite3, mysql, postgres or redis supported) (default "sqlite3")
   -debug
         debug mode (default: false)
   -debug-sql
         SQL debug mode (default: false)
+  -quiet
+        quiet mode (no output)
   -log-dir string
         /path/to/log (default "/var/log/vuls")
   -port string
-        HTTP server port number (default: 1324) 
+        HTTP server port number (default: 1324)
 
 ```
 
-
 ----
 
-# Data Source
+## Data Source
 
 - [RedHat](https://www.redhat.com/security/data/oval/)
 - [Debian](https://www.debian.org/security/oval/)
 - [Ubuntu](https://people.canonical.com/~ubuntu-security/oval/)
 - [SUSE](http://ftp.suse.com/pub/projects/security/oval/)
 - [Oracle Linux](https://linux.oracle.com/security/oval/)
-
-
-----
-
-# Authors
-
-kotakanbe ([@kotakanbe](https://twitter.com/kotakanbe)) created goval-dictionary and [these fine people](https://github.com/future-architect/goval-dictionary/graphs/contributors) have contributed.
+- [Alpine-secdb](https://git.alpinelinux.org/cgit/alpine-secdb/)
 
 ----
 
-# Change Log
+## Authors
+
+kotakanbe ([@kotakanbe](https://twitter.com/kotakanbe)) created goval-dictionary and [these fine people](https://github.com/kotakanbe/goval-dictionary/graphs/contributors) have contributed.
+
+----
+
+## Change Log
 
 Please see [CHANGELOG](https://github.com/kotakanbe/goval-dictionary/blob/master/CHANGELOG.md).
 
 ----
 
-# Licence
+## License
 
 Please see [LICENSE](https://github.com/kotakanbe/goval-dictionary/blob/master/LICENSE).
-

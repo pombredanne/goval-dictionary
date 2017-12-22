@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 
 	"github.com/google/subcommands"
@@ -11,6 +12,7 @@ import (
 	c "github.com/kotakanbe/goval-dictionary/config"
 	"github.com/kotakanbe/goval-dictionary/db"
 	"github.com/kotakanbe/goval-dictionary/log"
+	"github.com/kotakanbe/goval-dictionary/models"
 	"github.com/kotakanbe/goval-dictionary/util"
 )
 
@@ -19,6 +21,7 @@ type SelectCmd struct {
 	DebugSQL bool
 	DBPath   string
 	DBType   string
+	Quiet    bool
 	LogDir   string
 
 	ByPackage bool
@@ -36,19 +39,21 @@ func (*SelectCmd) Usage() string {
 	return `fetch-redhat:
 	fetch-redhat
 		[-dbtype=mysql|sqlite3]
-		[-dbpath=$PWD/cve.sqlite3 or connection string]
+		[-dbpath=$PWD/oval.sqlite3 or connection string]
 		[-debug-sql]
+		[-quiet]
 		[-log-dir=/path/to/log]
 
 		[-by-package]
 		[-by-cveid]
-	`
+
+`
 }
 
 // SetFlags set flag
 func (p *SelectCmd) SetFlags(f *flag.FlagSet) {
-	f.BoolVar(&p.DebugSQL, "debug-sql", false,
-		"SQL debug mode")
+	f.BoolVar(&p.DebugSQL, "debug-sql", false, "SQL debug mode")
+	f.BoolVar(&p.Quiet, "quiet", false, "quiet mode (no output)")
 
 	defaultLogDir := util.GetDefaultLogDir()
 	f.StringVar(&p.LogDir, "log-dir", defaultLogDir, "/path/to/log")
@@ -70,16 +75,21 @@ func (p *SelectCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}
 	c.Conf.DBPath = p.DBPath
 	c.Conf.DBType = p.DBType
 
-	log.Initialize(p.LogDir)
+	c.Conf.Quiet = p.Quiet
+	if c.Conf.Quiet {
+		log.Initialize(p.LogDir, ioutil.Discard)
+	} else {
+		log.Initialize(p.LogDir, os.Stderr)
+	}
 
 	if f.NArg() != 3 {
 		log.Fatal(`
 		Usage:
 		select OVAL by package name
-		./goval-dictionary select-redhat -by-package RedHat 7 java-1.7.0-openjdk
+		./goval-dictionary select -by-package RedHat 7 java-1.7.0-openjdk
 
 		select OVAL by CVE-ID
-		./goval-dictionary select-redhat -by-cveid RedHat 7 CVE-2015-1111
+		./goval-dictionary select -by-cveid RedHat 7 CVE-2015-1111
 		`)
 	}
 
@@ -87,13 +97,20 @@ func (p *SelectCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}
 		log.Fatal("Specify -by-package or -by-cveid")
 	}
 
-	log.Infof("Opening DB (%s).", c.Conf.DBType)
-	if err := db.OpenDB(); err != nil {
-		log.Fatal(err)
+	var err error
+	var driver db.DB
+	if driver, err = db.NewDB(f.Args()[0], c.Conf.DBType, c.Conf.DBPath, c.Conf.DebugSQL); err != nil {
+		log.Error(err)
+		return subcommands.ExitFailure
 	}
+	defer driver.CloseDB()
 
+	// count, err := driver.CountDefs("redhat", "7")
+	// pp.Println("count: ", count, err)
+
+	var dfs []models.Definition
 	if p.ByPackage {
-		dfs, err := db.GetByPackName(f.Args()[0], f.Args()[1], f.Args()[2])
+		dfs, err = driver.GetByPackName(f.Args()[1], f.Args()[2])
 		if err != nil {
 			//TODO Logger
 			log.Fatal(err)
@@ -113,7 +130,7 @@ func (p *SelectCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}
 	}
 
 	if p.ByCveID {
-		dfs, err := db.GetByCveID(f.Args()[0], f.Args()[1], f.Args()[2])
+		dfs, err = driver.GetByCveID(f.Args()[1], f.Args()[2])
 		if err != nil {
 			log.Fatal(err)
 		}

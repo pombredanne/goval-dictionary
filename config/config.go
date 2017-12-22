@@ -7,13 +7,16 @@ import (
 
 const (
 	// RedHat is
-	RedHat = "RedHat"
+	RedHat = "redhat"
+
+	// CentOS is
+	CentOS = "centos"
 
 	// Debian is
-	Debian = "Debian"
+	Debian = "debian"
 
 	// Ubuntu is
-	Ubuntu = "Ubuntu"
+	Ubuntu = "ubuntu"
 
 	// Ubuntu12 is Ubuntu Precise
 	Ubuntu12 = "precise"
@@ -23,6 +26,18 @@ const (
 
 	// Ubuntu16 is Ubuntu Xenial
 	Ubuntu16 = "xenial"
+
+	// Debian7 is wheezy
+	Debian7 = "wheezy"
+
+	// Debian8 is jessie
+	Debian8 = "jessie"
+
+	// Debian9 is stretch
+	Debian9 = "stretch"
+
+	// Debian10 is buster
+	Debian10 = "buster"
 
 	// OpenSUSE is
 	OpenSUSE = "opensuse"
@@ -40,7 +55,10 @@ const (
 	SUSEOpenstackCloud = "suse.openstack.cloud"
 
 	// Oracle is
-	Oracle = "Oracle"
+	Oracle = "oracle"
+
+	// Alpine is
+	Alpine = "alpine"
 )
 
 // Conf has Configuration
@@ -50,6 +68,7 @@ var Conf Config
 type Config struct {
 	Debug     bool
 	DebugSQL  bool
+	Quiet     bool
 	DBPath    string
 	DBType    string
 	Bind      string `valid:"ipv4"`
